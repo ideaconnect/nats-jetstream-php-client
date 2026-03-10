@@ -10,6 +10,7 @@ use Basis\Nats\Message\Factory;
 use Basis\Nats\Message\Info;
 use Basis\Nats\Message\Msg;
 use Basis\Nats\Message\Payload;
+use Basis\Nats\Message\Ping;
 use Basis\Nats\Message\Pong;
 use ReflectionProperty;
 use Tests\TestCase;
@@ -76,5 +77,26 @@ class FactoryTest extends TestCase
     {
         $this->expectExceptionMessage("Parse message failure: TEST");
         Factory::create("TEST");
+    }
+
+    public function testPing(): void
+    {
+        $message = Factory::create('PING');
+        $this->assertInstanceOf(Ping::class, $message);
+        $this->assertSame('PING', $message->render());
+    }
+
+    public function testErrorLine(): void
+    {
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage('Authorization Violation');
+        Factory::create("-ERR 'Authorization Violation'");
+    }
+
+    public function testUnknownMessageType(): void
+    {
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('Unexpected message type: BOGUS');
+        Factory::create('BOGUS payload');
     }
 }

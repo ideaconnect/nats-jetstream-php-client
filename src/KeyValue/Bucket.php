@@ -6,13 +6,12 @@ namespace Basis\Nats\KeyValue;
 
 use Basis\Nats\Client;
 use Basis\Nats\Consumer\Configuration as ConsumerConfiguration;
+use Basis\Nats\Exception\ApiException;
 use Basis\Nats\Message\Payload;
 use Basis\Nats\Stream\Stream;
-use Exception;
 
 class Bucket
 {
-    private ?bool $exists = null;
     private ?Stream $stream = null;
     private Configuration $configuration;
 
@@ -28,7 +27,7 @@ class Bucket
         try {
             $entry = $this->getEntry($key);
             return $entry ? $entry->value : null;
-        } catch (Exception $e) {
+        } catch (ApiException $e) {
             if ($e->getMessage() == 'no message found') {
                 return null;
             }

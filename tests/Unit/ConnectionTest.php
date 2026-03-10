@@ -7,10 +7,10 @@ namespace Tests\Unit;
 use Basis\Nats\Client;
 use Basis\Nats\Configuration;
 use Basis\Nats\Connection;
+use Basis\Nats\Exception\ConnectionException;
 use Basis\Nats\Message\Info;
 use Basis\Nats\Message\Msg;
 use Basis\Nats\Message\Pong;
-use LogicException;
 use Monolog\Handler\TestHandler;
 use Monolog\Logger;
 use ReflectionProperty;
@@ -88,7 +88,7 @@ class ConnectionTest extends TestCase
         // Close the server-side socket so the client socket sees EOF
         fclose($server);
 
-        $this->expectException(LogicException::class);
+        $this->expectException(ConnectionException::class);
         $this->expectExceptionMessage('supplied resource is not a valid stream resource');
         $connection->getMessage(0);
     }

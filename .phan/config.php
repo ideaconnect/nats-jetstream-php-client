@@ -20,6 +20,8 @@ return [
         'vendor/tysonandre/',
         'vendor/doctrine/',
         'vendor/friendsofphp/',
+        // PHP 8.0+ ships Stringable natively; the polyfill stub causes PhanRedefinedInheritedInterface
+        'vendor/symfony/polyfill-php80/Resources/stubs/Stringable.php',
     ],
 
     'minimum_severity' => Issue::SEVERITY_LOW,

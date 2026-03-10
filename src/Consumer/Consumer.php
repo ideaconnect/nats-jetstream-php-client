@@ -14,6 +14,7 @@ class Consumer
 {
     private ?bool $exists = null;
     private bool $interrupt = false;
+    private bool $continueOnHandlerException = false;
     private float $delay = 1;
     private float $expires = 0.1;
     private int $batch = 1;
@@ -121,6 +122,7 @@ class Consumer
             'subject' => '$JS.API.CONSUMER.MSG.NEXT.' . $this->getStream() . '.' . $this->getName(),
         ]);
 
+        $queue->setMaxQueueSize(max(1, $this->getBatching()));
         $queue->setLauncher($launcher);
         return $queue;
     }
@@ -151,7 +153,11 @@ class Consumer
                     if ($ack) {
                         $message->nack();
                     }
-                    throw $e;
+                    if (!$this->continueOnHandlerException) {
+                        throw $e;
+                    }
+
+                    continue;
                 }
                 if ($this->interrupt) {
                     $this->interrupt = false;
@@ -204,6 +210,13 @@ class Consumer
     public function setIterations(int $iterations): self
     {
         $this->iterations = $iterations;
+
+        return $this;
+    }
+
+    public function setContinueOnHandlerException(bool $continueOnHandlerException): self
+    {
+        $this->continueOnHandlerException = $continueOnHandlerException;
 
         return $this;
     }

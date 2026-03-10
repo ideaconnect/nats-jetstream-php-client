@@ -65,17 +65,21 @@ class Configuration
         return $options;
     }
 
-    public function delay(int $iteration)
+    public function delay(int $iteration): void
     {
-        $milliseconds = intval($this->delay * 1_000);
+        $baseMilliseconds = max(1, (int) round($this->delay * 1_000));
 
         switch ($this->delayMode) {
             case self::DELAY_EXPONENTIAL:
-                $milliseconds = $milliseconds ** $iteration;
+                $milliseconds = $baseMilliseconds * (10 ** max(0, $iteration));
                 break;
 
             case self::DELAY_LINEAR:
-                $milliseconds = $milliseconds * $iteration;
+                $milliseconds = $baseMilliseconds * max(1, $iteration + 1);
+                break;
+
+            default:
+                $milliseconds = $baseMilliseconds;
                 break;
         }
 

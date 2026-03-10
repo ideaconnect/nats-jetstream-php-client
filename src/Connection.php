@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Basis\Nats;
 
+use Basis\Nats\Exception\ConnectionException;
 use Basis\Nats\Message\Connect;
 use Basis\Nats\Message\Factory;
 use Basis\Nats\Message\Info;
@@ -14,10 +15,10 @@ use Basis\Nats\Message\Publish;
 use Basis\Nats\Message\Pong;
 use Basis\Nats\Message\Prototype as Message;
 use Basis\Nats\Message\Subscribe;
-use LogicException;
+use InvalidArgumentException;
 use Psr\Log\LoggerInterface;
 use Throwable;
-use Exception;
+use UnexpectedValueException;
 
 class Connection
 {
@@ -64,7 +65,7 @@ class Connection
 
         while (true) {
             if (!is_resource($this->socket) || feof($this->socket)) {
-                throw new LogicException('supplied resource is not a valid stream resource');
+                throw new ConnectionException('supplied resource is not a valid stream resource');
             }
             $message = null;
             $line = stream_get_line($this->socket, 1024, "\r\n");
@@ -113,7 +114,7 @@ class Connection
         if ($this->activityAt && $this->activityAt + $this->config->timeout < $now) {
             if ($this->pongAt && $this->pongAt + $this->config->pingInterval < $now) {
                 if ($this->prolongateTill && $this->prolongateTill < $now) {
-                    $this->processException(new LogicException('Socket read timeout'));
+                    $this->processException(new ConnectionException('Socket read timeout'));
                 }
             }
         }
@@ -143,10 +144,10 @@ class Connection
             try {
                 $written = @fwrite($this->socket, substr($line, $total, $this->packetSize));
                 if ($written === false) {
-                    throw new LogicException('Error sending data');
+                    throw new ConnectionException('Error sending data');
                 }
                 if ($written === 0) {
-                    throw new LogicException('Broken pipe or closed connection');
+                    throw new ConnectionException('Broken pipe or closed connection');
                 }
                 $total += $written;
 
@@ -200,7 +201,7 @@ class Connection
         $this->socket = @stream_socket_client($dsn, $error, $errorMessage, $config->timeout, $flags, $this->context);
 
         if ($error || !$this->socket) {
-            throw new Exception($errorMessage ?: "Connection error", $error);
+            throw new ConnectionException($errorMessage ?: 'Connection error', (int) $error);
         }
 
         $this->setTimeout($config->timeout);
@@ -217,7 +218,9 @@ class Connection
 
         $infoMessage = $this->getMessage($config->timeout);
         if (!$infoMessage instanceof Info) {
-            throw new Exception('Expected INFO message from server, got: ' . ($infoMessage ? get_class($infoMessage) : 'null'));
+            throw new UnexpectedValueException(
+                'Expected INFO message from server, got: ' . ($infoMessage ? get_class($infoMessage) : 'null')
+            );
         }
         $this->infoMessage = $infoMessage;
 
@@ -234,13 +237,13 @@ class Connection
         if ($requireClientCert) {
             if (!empty($this->config->tlsKeyFile)) {
                 if (!file_exists($this->config->tlsKeyFile)) {
-                    throw new Exception("tlsKeyFile file does not exist: " . $this->config->tlsKeyFile);
+                    throw new InvalidArgumentException('tlsKeyFile file does not exist: ' . $this->config->tlsKeyFile);
                 }
                 stream_context_set_option($this->context, 'ssl', 'local_pk', $this->config->tlsKeyFile);
             }
             if (!empty($this->config->tlsCertFile)) {
                 if (!file_exists($this->config->tlsCertFile)) {
-                    throw new Exception("tlsCertFile file does not exist: " . $this->config->tlsCertFile);
+                    throw new InvalidArgumentException('tlsCertFile file does not exist: ' . $this->config->tlsCertFile);
                 }
                 stream_context_set_option($this->context, 'ssl', 'local_cert', $this->config->tlsCertFile);
             }
@@ -248,13 +251,13 @@ class Connection
 
         if (!empty($this->config->tlsCaFile)) {
             if (!file_exists($this->config->tlsCaFile)) {
-                throw new Exception("tlsCaFile file does not exist: " . $this->config->tlsCaFile);
+                throw new InvalidArgumentException('tlsCaFile file does not exist: ' . $this->config->tlsCaFile);
             }
             stream_context_set_option($this->context, 'ssl', 'cafile', $this->config->tlsCaFile);
         }
 
         if (!stream_socket_enable_crypto($this->socket, true, STREAM_CRYPTO_METHOD_TLSv1_2_CLIENT)) {
-            throw new Exception('Failed to connect: Error enabling TLS');
+            throw new ConnectionException('Failed to connect: Error enabling TLS');
         }
     }
 

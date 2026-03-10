@@ -13,6 +13,7 @@ use Basis\Nats\Message\Payload;
 use Basis\Nats\Stream\ConsumerLimits;
 use Basis\Nats\Stream\RetentionPolicy;
 use Basis\Nats\Stream\StorageBackend;
+use Basis\Nats\Stream\Compression;
 use Exception;
 use Tests\FunctionalTestCase;
 
@@ -1135,5 +1136,85 @@ class StreamTest extends FunctionalTestCase
             'between-2',
             'delay-30s',
         ], $deliveredMessages);
+    }
+
+    /**
+     * Verify that a stream created with S2 compression is accepted by the NATS
+     * server and that the server reflects the setting in its STREAM.INFO response.
+     *
+     * Also verifies that the configuration round-trips correctly through
+     * toArray() / fromArray() with the enum value preserved.
+     *
+     * Requires NATS Server >= 2.10.
+     */
+    public function testCompressionConfiguration(): void
+    {
+        $this->requireMinNatsVersion('2.10.0');
+
+        $client = $this->createClient();
+        $stream = $client->getApi()->getStream('compress_cfg');
+
+        $stream->getConfiguration()
+            ->setSubjects(['compress_cfg.*'])
+            ->setCompression(Compression::S2);
+
+        $stream->create();
+
+        // The server should echo back the compression setting in the stream info.
+        $info = $stream->info();
+        $this->assertSame('s2', $info->config->compression ?? null);
+
+        // toArray() should include the key.
+        $exported = $stream->getConfiguration()->toArray();
+        $this->assertArrayHasKey('compression', $exported);
+        $this->assertSame('s2', $exported['compression']);
+
+        // fromArray() should restore the Compression enum.
+        $restored = new \Basis\Nats\Stream\Configuration('compress_cfg');
+        $restored->fromArray($exported);
+        $this->assertSame(Compression::S2, $restored->getCompression());
+    }
+
+    /**
+     * Verify that messages can be published to and consumed from a stream that
+     * has S2 compression enabled. Compression is transparent to the client;
+     * message bodies must arrive intact and in order.
+     *
+     * Requires NATS Server >= 2.10.
+     */
+    public function testPublishAndConsumeWithCompression(): void
+    {
+        $this->requireMinNatsVersion('2.10.0');
+
+        $client = $this->createClient();
+        $stream = $client->getApi()->getStream('compress_msgs');
+
+        $stream->getConfiguration()
+            ->setSubjects(['compress_msgs'])
+            ->setRetentionPolicy(RetentionPolicy::WORK_QUEUE)
+            ->setCompression(Compression::S2);
+
+        $stream->create();
+
+        $payloads = ['first-message', 'second-message', 'third-message'];
+        foreach ($payloads as $body) {
+            $stream->publish('compress_msgs', $body);
+        }
+
+        $consumer = $stream->getConsumer('compress_consumer');
+        $consumer->getConfiguration()
+            ->setSubjectFilter('compress_msgs')
+            ->setAckPolicy(AckPolicy::EXPLICIT)
+            ->setReplayPolicy(ReplayPolicy::INSTANT);
+        $consumer->setExpires(3)->setBatching(count($payloads))->create();
+
+        $this->assertSame(count($payloads), $consumer->info()->num_pending);
+
+        $received = [];
+        $consumer->setIterations(1)->handle(function (Payload $msg) use (&$received) {
+            $received[] = (string) $msg;
+        });
+
+        $this->assertSame($payloads, $received);
     }
 }

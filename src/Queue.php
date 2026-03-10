@@ -6,12 +6,15 @@ namespace Basis\Nats;
 
 use Basis\Nats\Message\Msg;
 use Basis\Nats\Message\Publish;
-use Exception;
+use InvalidArgumentException;
+use OverflowException;
+use UnderflowException;
 
 class Queue
 {
     private array $queue = [];
     private float $timeout;
+    private int $maxQueueSize = 0;
     private ?Publish $launcher = null;
     private ?Msg $lastMessage = null;
 
@@ -70,8 +73,12 @@ class Queue
         return $result;
     }
 
-    public function handle(Msg $message)
+    public function handle(Msg $message): void
     {
+        if ($this->maxQueueSize > 0 && count($this->queue) >= $this->maxQueueSize) {
+            throw new OverflowException("Queue for subject {$this->subject} exceeded {$this->maxQueueSize} messages");
+        }
+
         $this->queue[] = $this->lastMessage = $message;
     }
 
@@ -84,9 +91,25 @@ class Queue
                 return $message;
             }
             if ($timeout && ($start + $timeout < microtime(true))) {
-                throw new Exception("Subject $this->subject is empty");
+                throw new UnderflowException("Subject {$this->subject} is empty");
             }
         }
+    }
+
+    public function setMaxQueueSize(int $value): self
+    {
+        if ($value < 0) {
+            throw new InvalidArgumentException('Queue max size must be zero or greater');
+        }
+
+        $this->maxQueueSize = $value;
+
+        return $this;
+    }
+
+    public function getMaxQueueSize(): int
+    {
+        return $this->maxQueueSize;
     }
 
     public function setLauncher(Publish $message): void

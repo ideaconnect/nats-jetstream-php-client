@@ -10,7 +10,7 @@ use Basis\Nats\Message\Publish;
 use Basis\Nats\Message\Subscribe;
 use Basis\Nats\Message\Unsubscribe;
 use Basis\Nats\Service\Service;
-use Exception;
+use Basis\Nats\Exception\ApiException;
 use LogicException;
 use Psr\Log\LoggerInterface;
 
@@ -66,7 +66,7 @@ class Client
         }
 
         if ($result->error ?? false) {
-            throw new Exception($result->error->description, $result->error->err_code);
+            throw ApiException::fromError($result->error);
         }
 
         return $result;

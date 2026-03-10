@@ -53,7 +53,9 @@ Contributions, feedback, and bug reports are welcome.
 - [Message Scheduling](#message-scheduling)
 - [Microservices](#microservices)
 - [Key Value Storage](#key-value-storage)
+- [Testing](#testing)
 - [Performance](#performance)
+- [Error Handling](#error-handling)
 - [Configuration Options](#configuration-options)
 - [Roadmap](#roadmap)
 - [Contributing](#contributing)
@@ -66,6 +68,36 @@ composer require idct/nats-jetstream-php-client
 ```
 
 The NKeys functionality requires Ed25519, which is provided in `libsodium` extension or `sodium_compat` package.
+
+## Testing
+
+The package intentionally still ships under the `Basis\Nats` namespace for backward compatibility while the broader upgrade work is ongoing.
+
+Run static analysis:
+
+```bash
+composer static-analysis
+```
+
+Run the main test suite:
+
+```bash
+composer test
+```
+
+Run performance tests:
+
+```bash
+composer run perf-test
+```
+
+Functional and performance tests require a running NATS server. You can start one with the bundled Docker setup:
+
+```bash
+cd docker && docker compose up -d && cd ..
+```
+
+The default test environment uses `NATS_HOST=localhost` and `NATS_PORT=4222`.
 
 ## Connecting
 ```php
@@ -80,13 +112,13 @@ $configuration = new Configuration(
 );
 
 // delay configuration options are changed via setters
-// default delay mode is constant - first retry be in 1ms, second in 1ms, third in 1ms
+// default delay mode is constant - first retry is in 1ms, second in 1ms, third in 1ms
 $configuration->setDelay(0.001);
 
-// linear delay mode - first retry be in 1ms, second in 2ms, third in 3ms, fourth in 4ms, etc...
+// linear delay mode - first retry is in 1ms, second in 2ms, third in 3ms, fourth in 4ms, etc...
 $configuration->setDelay(0.001, Configuration::DELAY_LINEAR);
 
-// exponential delay mode - first retry be in 10ms, second in 100ms, third in 1s, fourth if 10 seconds, etc...
+// exponential delay mode - first retry will be in 10ms, second in 100ms, third in 1s, fourth in 10s, etc...
 $configuration->setDelay(0.01, Configuration::DELAY_EXPONENTIAL);
 
 
@@ -148,6 +180,7 @@ $client = new Client($configuration);
 ```php
 // queue usage example
 $queue = $client->subscribe('test_subject');
+$queue->setMaxQueueSize(1000); // optional safety limit for buffered messages
 
 $client->publish('test_subject', 'hello');
 $client->publish('test_subject', 'world');
@@ -250,6 +283,7 @@ var_dump($greeter->info()); // can consumer info
 
 $goodbyer = $stream->getConsumer('goodbyer');
 $goodbyer->getConfiguration()->setSubjectFilter('mailer.bye');
+$goodbyer->setContinueOnHandlerException(true); // optional: nack failed messages and keep consuming
 $goodbyer->create(); // create consumer if you don't want to handle anything right now
 $goodbyer->handle(function ($address) {
     mail($address, "See you later");
@@ -494,6 +528,68 @@ export NATS_CLIENT_LOG=1
 composer run perf-test
 ```
 
+## Error Handling
+
+The library provides a structured exception hierarchy so you can catch errors at the right level of granularity.
+
+### Exception Hierarchy
+
+```
+RuntimeException
+└── NatsException                      — base class for all library exceptions
+    ├── ConnectionException            — socket, TLS, and reconnection failures
+    └── ApiException                   — JetStream API errors (with error code and details)
+```
+
+SPL exceptions are used where semantically appropriate:
+
+| Exception | Thrown when |
+| --- | --- |
+| `OverflowException` | Queue buffer exceeds the configured `maxQueueSize` |
+| `UnderflowException` | `Queue::next()` times out with no message available |
+| `InvalidArgumentException` | Invalid configuration values (negative queue size, missing TLS files, unknown delay mode) |
+
+### Catching Connection Errors
+
+```php
+use Basis\Nats\Exception\ConnectionException;
+
+try {
+    $client->ping();
+} catch (ConnectionException $e) {
+    // socket refused, TLS handshake failure, broken pipe, read timeout, etc.
+    error_log('NATS connection failed: ' . $e->getMessage());
+}
+```
+
+### Catching JetStream API Errors
+
+`ApiException` carries the structured error returned by the server, including the NATS error code:
+
+```php
+use Basis\Nats\Exception\ApiException;
+
+try {
+    $stream->create();
+} catch (ApiException $e) {
+    echo $e->getMessage();        // e.g. "stream name already in use"
+    echo $e->getCode();           // NATS error code, e.g. 10058
+    echo $e->error->description;  // raw server error description
+}
+```
+
+### Catching Any Library Exception
+
+```php
+use Basis\Nats\Exception\NatsException;
+
+try {
+    $client->dispatch('service.endpoint', 'payload');
+} catch (NatsException $e) {
+    // catches both ConnectionException and ApiException
+}
+```
+
 ## Configuration Options
 
 The following is the list of configuration options and default values.
@@ -518,7 +614,7 @@ The following is the list of configuration options and default values.
 
 ## Roadmap
 
-This library is under active development. See [ROADMAP.md](ROADMAP.md) for the full plan covering:
+This library is under active development. See [UPGRADE_ROADMAP.md](UPGRADE_ROADMAP.md) for the full plan covering:
 
 - Bug fixes and code quality improvements
 - Modern PHP 8.2+ features (native enums, typed properties)

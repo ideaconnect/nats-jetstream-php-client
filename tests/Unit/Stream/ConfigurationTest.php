@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Tests\Unit\Stream;
 
 use Basis\Nats\Stream\Configuration;
+use Basis\Nats\Stream\Compression;
+use DomainException;
 use Tests\TestCase;
 
 /**
@@ -208,5 +210,159 @@ class ConfigurationTest extends TestCase
         $this->assertSame($config, $result);
         $this->assertTrue($config->getAllowMsgSchedules());
         $this->assertFalse($config->getDenyDelete());
+    }
+
+    // --- Compression tests ---
+
+    public function testCompressionDefaultIsNull(): void
+    {
+        $config = new Configuration('test_stream');
+        $this->assertNull($config->getCompression());
+    }
+
+    public function testSetCompressionReturnsSelf(): void
+    {
+        $config = new Configuration('test_stream');
+        $this->assertSame($config, $config->setCompression(Compression::S2));
+    }
+
+    public function testSetCompressionS2(): void
+    {
+        $config = new Configuration('test_stream');
+        $config->setCompression(Compression::S2);
+        $this->assertSame(Compression::S2, $config->getCompression());
+    }
+
+    public function testSetCompressionNone(): void
+    {
+        $config = new Configuration('test_stream');
+        $config->setCompression(Compression::None);
+        $this->assertSame(Compression::None, $config->getCompression());
+    }
+
+    public function testSetCompressionNull(): void
+    {
+        $config = new Configuration('test_stream');
+        $config->setCompression(Compression::S2);
+        $config->setCompression(null);
+        $this->assertNull($config->getCompression());
+    }
+
+    public function testToArrayIncludesCompressionS2WhenSet(): void
+    {
+        $config = new Configuration('test_stream');
+        $config->setSubjects(['test'])->setCompression(Compression::S2);
+
+        $array = $config->toArray();
+        $this->assertArrayHasKey('compression', $array);
+        $this->assertSame('s2', $array['compression']);
+    }
+
+    public function testToArrayOmitsCompressionWhenNull(): void
+    {
+        $config = new Configuration('test_stream');
+        $config->setSubjects(['test']);
+
+        $this->assertArrayNotHasKey('compression', $config->toArray());
+    }
+
+    public function testFromArrayParsesCompression(): void
+    {
+        $config = new Configuration('test_stream');
+        $config->fromArray([
+            'discard'       => 'old',
+            'max_consumers' => -1,
+            'num_replicas'  => 1,
+            'retention'     => 'limits',
+            'storage'       => 'file',
+            'subjects'      => ['test'],
+            'compression'   => 's2',
+        ]);
+
+        $this->assertSame(Compression::S2, $config->getCompression());
+    }
+
+    public function testFromArrayWithoutCompressionKeepsNull(): void
+    {
+        $config = new Configuration('test_stream');
+        $config->fromArray([
+            'discard'       => 'old',
+            'max_consumers' => -1,
+            'num_replicas'  => 1,
+            'retention'     => 'limits',
+            'storage'       => 'file',
+            'subjects'      => ['test'],
+        ]);
+
+        $this->assertNull($config->getCompression());
+    }
+
+    public function testRoundTripWithCompression(): void
+    {
+        $original = new Configuration('test_stream');
+        $original->setSubjects(['test'])->setCompression(Compression::S2);
+
+        $exported = $original->toArray();
+
+        $restored = new Configuration('test_stream');
+        $restored->fromArray($exported);
+
+        $this->assertSame(Compression::S2, $restored->getCompression());
+        $this->assertSame($original->toArray(), $restored->toArray());
+    }
+
+    // --- validateSubject() ---
+
+    public function testValidateSubjectReturnsSubjectWhenValid(): void
+    {
+        $config = new Configuration('test_stream');
+        $config->setSubjects(['foo', 'bar']);
+        $this->assertSame('foo', $config->validateSubject('foo'));
+    }
+
+    public function testValidateSubjectThrowsForUnknownSubject(): void
+    {
+        $config = new Configuration('test_stream');
+        $config->setSubjects(['foo']);
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage('Invalid subject baz');
+        $config->validateSubject('baz');
+    }
+
+    // --- getName() ---
+
+    public function testGetNameReturnsConstructorValue(): void
+    {
+        $config = new Configuration('my_stream');
+        $this->assertSame('my_stream', $config->getName());
+    }
+
+    // --- setDescription() / getDescription() ---
+
+    public function testDescriptionDefaultIsNull(): void
+    {
+        $this->assertNull((new Configuration('test_stream'))->getDescription());
+    }
+
+    public function testSetDescriptionPersistsValue(): void
+    {
+        $config = new Configuration('test_stream');
+        $config->setDescription('A test stream');
+        $this->assertSame('A test stream', $config->getDescription());
+    }
+
+    public function testToArrayIncludesDescriptionWhenSet(): void
+    {
+        $config = new Configuration('test_stream');
+        $config->setSubjects(['test'])->setDescription('My desc');
+        $this->assertArrayHasKey('description', $config->toArray());
+        $this->assertSame('My desc', $config->toArray()['description']);
+    }
+
+    public function testToArrayOmitsDescriptionWhenNull(): void
+    {
+        $config = new Configuration('test_stream');
+        $config->setSubjects(['test']);
+        $this->assertArrayNotHasKey('description', $config->toArray());
     }
 }

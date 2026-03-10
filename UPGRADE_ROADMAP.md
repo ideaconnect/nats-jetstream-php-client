@@ -7,39 +7,13 @@
 
 ---
 
-## Phase 0 — Bug Fixes (Immediate)
-
-Critical issues found during the codebase audit that should be resolved before any feature work.
-
-- [v] **Fix `Client::unsubscribeRequests()` inverted logic** — the method sends an unsubscribe message when `$this->requestsSubscribed` is `false` (i.e. when *not* subscribed), then sets it to `true`. The condition is inverted.
-- [v] **Fix `ServiceEndpoint::$num_requests` off-by-one** — `$num_requests` is initialized to `1` instead of `0` in both the constructor and `resetStats()`, causing every endpoint to report one extra request.
-- [v] **Fix `Stream\Configuration::toArray()` null multiplication** — `$this->getDuplicateWindow() * 1_000_000_000` will throw a `TypeError` if `getDuplicateWindow()` returns `null`.
-- [v] **Add missing `declare(strict_types=1)`** to all 7 files in `src/Service/`: `Service.php`, `ServiceEndpoint.php`, `ServiceGroup.php`, `EndpointHandler.php`, `Response/Info.php`, `Response/Ping.php`, `Response/Stats.php`.
-- [v] **Fix README badges** — currently point to upstream `basis-company/nats.php` instead of this fork.
-
----
-
 ## Phase 1 — Code Quality & Modernization
 
 Bring the codebase up to modern PHP 8.2+ standards and improve developer experience.
 
-### 1.1 Native PHP Enums
-
-Replace the 6 abstract-class pseudo-enums with native PHP 8.2+ backed enums:
-
-- [v] `Stream\DiscardPolicy` (currently abstract class with string constants)
-- [v] `Stream\RetentionPolicy`
-- [v] `Stream\StorageBackend`
-- [v] `Consumer\AckPolicy`
-- [v] `Consumer\DeliverPolicy`
-- [v] `Consumer\ReplayPolicy`
-
 ### 1.2 Type Safety
 
 - [ ] Add return type declarations to all methods currently missing them (e.g. `Configuration::getName()`, `Consumer\Configuration` getters, `Bucket::delete()`, `Bucket::purge()`, `Connection::sendMessage()`, `Connection::setTimeout()`).
-- [ ] Type `Connection::$socket` and `$context` properties properly (currently untyped).
-- [ ] Implement `\Stringable` interface on `Message\Payload` (already has `__toString()`).
-- [ ] Type `Client::process()` return value properly or split into typed methods.
 - [ ] Review `Payload::__get()` magic — consider replacing with explicit, typed accessors.
 
 ### 1.3 Visibility — Private to Protected
@@ -53,20 +27,11 @@ Too many `private` properties prevent subclassing and adapter creation in librar
 - [ ] `KeyValue\Bucket`: `$stream`, `$streamName`, `$streamConfiguration`.
 - [ ] `Consumer\Configuration` and `Stream\Configuration`: all private properties.
 
-### 1.4 Tooling & Dependencies
-
-- [v] **Upgrade PHPUnit** from `^9.5` to `^10` or `^11` (PHPUnit 9 is EOL for PHP 8.2+; remove deprecated config attributes like `convertErrorsToExceptions`).
-- [v] **Upgrade Monolog** from `^2.3.5` to `^3`.
-- [v] **Consolidate CS tools** — both `phpcs.xml` (PHPCS) and `.php-cs-fixer.php` (PHP-CS-Fixer) exist; pick one and remove the other.
-- [x] **Add PHPStan** (level 6+) alongside or replacing Phan for static analysis — PHPStan has broader ecosystem adoption and better IDE integration.
-
 ---
 
 ## Phase 2 — Architecture & Extensibility
 
 Restructure the library for extensibility, testability, and decoupled integration by downstream libraries.
-
-- [ ] Remove or properly deprecate the legacy `$options`/`$options2`/`$options3` array parameters in `Configuration` constructor. Add `@deprecated` annotations and a target removal version if kept temporarily. BC-break.
 
 ### 2.1 Interfaces / Contracts
 
@@ -94,9 +59,8 @@ NatsException (base)
 └── ConfigurationException   — invalid configuration values
 ```
 
-- [ ] Create exception classes in `src/Exception/`.
-- [ ] Migrate all `throw new Exception(...)` and `throw new LogicException(...)` call sites.
-- [ ] Include NATS error codes in `ApiException` as structured data.
+- [ ] Complete the exception hierarchy in `src/Exception/` (initial `NatsException`, `ApiException`, and `ConnectionException` are already implemented).
+- [ ] Migrate all remaining `throw new Exception(...)` and `throw new LogicException(...)` call sites.
 
 ### 2.3 Decoupling
 
@@ -154,7 +118,6 @@ Fill in missing NATS features to achieve comprehensive protocol coverage.
 
 - [ ] Stream mirroring and sourcing configuration (`mirror`, `sources` in `Stream\Configuration`).
 - [ ] Stream `metadata`.
-- [ ] Stream `compression` option.
 - [ ] Subject transforms (`subject_transform` config).
 - [ ] Purge by subject and/or sequence (currently only full purge).
 - [ ] Delete message by sequence number.
@@ -167,8 +130,6 @@ Fill in missing NATS features to achieve comprehensive protocol coverage.
 - [ ] **Reconnect buffer** — queue pending messages during reconnect window.
 - [ ] **Heartbeat-based stall detection** — actively monitor idle heartbeat on consumers and connections (currently configurable but not enforced client-side).
 - [ ] **Typed `PubAck`** — parse and return a structured `PubAck` response from JetStream publish (stream name, sequence, duplicate flag).
-- [ ] **Max reconnect attempts** — `Connection::init()` reconnect loop is currently infinite; add configurable max attempts.
-- [ ] **Backpressure** — `Queue` accumulates messages in an unbounded array; add a configurable max-queue-size.
 
 ---
 
@@ -179,13 +140,12 @@ Fill in missing NATS features to achieve comprehensive protocol coverage.
 Add unit tests for all currently untested classes (no live NATS server required):
 
 - [ ] `Api`
-- [ ] `Queue`
 - [ ] `Stream\Stream`
 - [ ] `Consumer\Consumer`
 - [ ] `KeyValue\Bucket`, `KeyValue\Configuration`, `KeyValue\Entry`, `KeyValue\Status`
 - [ ] `Service\Service`, `Service\ServiceEndpoint`, `Service\ServiceGroup`
 - [ ] `Service\Response\Info`, `Service\Response\Ping`, `Service\Response\Stats`
-- [ ] `Message\Payload`, `Message\Publish`, `Message\Connect`, `Message\Subscribe`, `Message\Unsubscribe`
+- [ ] `Message\Publish`, `Message\Connect`, `Message\Subscribe`, `Message\Unsubscribe`
 
 > With interfaces from Phase 2, mocking `Connection` and `Client` becomes straightforward for isolated unit tests.
 
@@ -197,10 +157,6 @@ Add unit tests for all currently untested classes (no live NATS server required)
 
 ### 4.3 CI Modernization
 
-- [v] Upgrade `actions/checkout` from `v2` to `v4`.
-- [x] Add Composer dependency caching (`actions/cache`).
-- [x] **Parallelize CI jobs** — `editorconfig-verify`, `php-cs-verify`, and `static-analysis` are currently sequential; they are independent and should run in parallel.
-- [v] Add code coverage thresholds / quality gates (fail CI if coverage drops below X%).
 - [ ] Add matrix for new features (Object Store tests, multi-server tests).
 - [ ] Consider adding mutation testing (e.g. Infection) for test quality measurement.
 
@@ -210,7 +166,6 @@ Add unit tests for all currently untested classes (no live NATS server required)
 
 ### 5.1 README Overhaul
 
-- [v] Replace all badges to point to this fork (`idct/nats-jetstream-php-client`).
 - [ ] Fix code examples (TLS syntax error, etc.).
 - [ ] Add sections for new features (Object Store, ordered consumers, multi-server).
 - [ ] Add quick-start section with minimal working example.
@@ -232,19 +187,87 @@ Add unit tests for all currently untested classes (no live NATS server required)
 
 ## Priority & Sequencing
 
-| Phase | Priority | Estimated Effort | Dependencies |
-|-------|----------|-----------------|--------------|
-| **Phase 0** — Bug Fixes | **Critical** | Small | None |
-| **Phase 1** — Code Quality | **High** | Medium | Phase 0 |
-| **Phase 2** — Architecture | **High** | Large | Phase 1 (enums, types) |
-| **Phase 3** — NATS Features | **Medium** | Large | Phase 2 (interfaces, exceptions) |
-| **Phase 4** — Testing & CI | **Medium** | Medium | Phase 2 (interfaces for mocking) |
-| **Phase 5** — Documentation | **Ongoing** | Small-Medium | Parallel with all phases |
+| Phase | Status | Priority | Dependencies |
+|-------|--------|----------|--------------|
+| **Phase 0** — Bug Fixes | **Done** | ~~Critical~~ | None |
+| **Phase 1** — Code Quality | **In Progress** | High | Phase 0 |
+| **Phase 2** — Architecture | Not Started | High | Phase 1 (enums, types) |
+| **Phase 3** — NATS Features | Not Started | Medium | Phase 2 (interfaces, exceptions) |
+| **Phase 4** — Testing & CI | **In Progress** | Medium | Phase 2 (interfaces for mocking) |
+| **Phase 5** — Documentation | **In Progress** | Ongoing | Parallel with all phases |
 
-> Phases 0 and 1 can be released as a minor version bump.
+> Phase 0 is complete. Phase 1 enums and tooling upgrades are done; type safety and visibility work remains.
 > Phase 2 will be a major version bump (breaking changes: namespace, interfaces, exceptions).
 > Phase 3 features can be released incrementally after Phase 2.
 > Phase 4 and 5 should progress continuously alongside all other phases.
+
+---
+
+## Completed Work
+
+All items below have been finished and are kept here for reference.
+
+### Phase 0 — Bug Fixes
+
+- [x] **Fix `Client::unsubscribeRequests()` inverted logic** — the method sends an unsubscribe message when `$this->requestsSubscribed` is `false` (i.e. when *not* subscribed), then sets it to `true`. The condition is inverted.
+- [x] **Fix `ServiceEndpoint::$num_requests` off-by-one** — `$num_requests` is initialized to `1` instead of `0` in both the constructor and `resetStats()`, causing every endpoint to report one extra request.
+- [x] **Fix `Stream\Configuration::toArray()` null multiplication** — `$this->getDuplicateWindow() * 1_000_000_000` will throw a `TypeError` if `getDuplicateWindow()` returns `null`.
+- [x] **Add missing `declare(strict_types=1)`** to all 7 files in `src/Service/`: `Service.php`, `ServiceEndpoint.php`, `ServiceGroup.php`, `EndpointHandler.php`, `Response/Info.php`, `Response/Ping.php`, `Response/Stats.php`.
+- [x] **Fix README badges** — currently point to upstream `basis-company/nats.php` instead of this fork.
+
+### Phase 1 — Code Quality & Modernization
+
+**1.1 Native PHP Enums** — replaced all 6 abstract-class pseudo-enums with native PHP 8.2+ backed enums:
+
+- [x] `Stream\DiscardPolicy`
+- [x] `Stream\RetentionPolicy`
+- [x] `Stream\StorageBackend`
+- [x] `Consumer\AckPolicy`
+- [x] `Consumer\DeliverPolicy`
+- [x] `Consumer\ReplayPolicy`
+
+**1.2 Type Safety** (partial):
+
+- [x] Type `Connection::$socket` and `$context` properties properly (previously untyped).
+- [x] Implement `\Stringable` interface on `Message\Payload` (already had `__toString()`).
+- [x] Type `Client::process()` return value properly / split into typed methods.
+- [x] Remove or properly deprecate the legacy `$options`/`$options2`/`$options3` array parameters in `Configuration` constructor.
+
+**1.4 Tooling & Dependencies**:
+
+- [x] **Upgrade PHPUnit** from `^9.5` to `^10` or `^11`.
+- [x] **Upgrade Monolog** from `^2.3.5` to `^3`.
+- [x] **Consolidate CS tools** — removed duplicate config; picked one linter.
+- [x] **Add PHPStan** (level 6+) alongside or replacing Phan for static analysis.
+
+### Phase 2 — Architecture & Extensibility
+
+**2.2 Custom Exception Hierarchy** (partial):
+
+- [x] Add initial exception classes in `src/Exception/`: `NatsException`, `ApiException`, `ConnectionException`.
+- [x] Include NATS error codes and raw error data in `ApiException` as structured data.
+- [x] Migrate the primary API and connection/TLS failure paths to library-specific exceptions.
+
+### Phase 3 — NATS 2.12+ Feature Completeness
+
+- [x] Stream `compression` option.
+- [x] **Max reconnect attempts** — `Connection::init()` reconnect loop is no longer infinite; configurable max attempts added.
+- [x] **Backpressure** — `Queue` now supports a configurable max queue size, and the consumer fetch path applies queue limits by default.
+- [x] Consumer handler failure behavior can now be configured with `setContinueOnHandlerException(true)`.
+
+### Phase 4 — Testing & CI
+
+- [x] Upgrade `actions/checkout` from `v2` to `v4`.
+- [x] Add Composer dependency caching (`actions/cache`).
+- [x] **Parallelize CI jobs** — `editorconfig-verify`, `php-cs-verify`, and `static-analysis` now run in parallel.
+- [x] Add code coverage thresholds / quality gates (fail CI if coverage drops below threshold).
+- [x] Add unit coverage for `Queue` and `Message\Payload`, plus delay-behavior coverage in `Configuration` tests.
+
+### Phase 5 — Documentation & Developer Experience
+
+- [x] Replace all badges to point to this fork (`idct/nats-jetstream-php-client`).
+- [x] Add a dedicated testing section with Composer commands and Docker/NATS workflow.
+- [x] Fix roadmap links and delay example wording in `README.md`.
 
 ---
 
